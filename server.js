@@ -33,6 +33,9 @@ function writeData(data) {
   ensureDataFile();
   fs.writeFileSync(dataPath, JSON.stringify(data, null, 2), "utf-8");
 }
+import aiContaRouter from "./modules/aiconta/index.js";
+
+app.use("/api/aiconta", aiContaRouter);
 
 // Middlewares
 app.use(
