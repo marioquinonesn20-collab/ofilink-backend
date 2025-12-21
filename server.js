@@ -1,4 +1,5 @@
 require("dotenv").config();
+
 const express = require("express");
 const cors = require("cors");
 const fs = require("fs");
@@ -7,10 +8,34 @@ const path = require("path");
 const app = express();
 const PORT = process.env.PORT || 4000;
 
+// =========================
+// CORS
+// =========================
 const corsOriginsEnv = process.env.CORS_ORIGINS || "http://localhost:5173";
-const allowedOrigins = corsOriginsEnv.split(",").map((o) => o.trim()).filter(Boolean);
+const allowedOrigins = corsOriginsEnv
+  .split(",")
+  .map((o) => o.trim())
+  .filter(Boolean);
 
-// Persistencia JSON
+app.use(
+  cors({
+    origin: function (origin, callback) {
+      if (!origin) return callback(null, true); // Postman / server-to-server
+      if (allowedOrigins.length === 0) return callback(null, true);
+      if (allowedOrigins.indexOf(origin) === -1) {
+        return callback(new Error("Origen no permitido por CORS: " + origin), false);
+      }
+      return callback(null, true);
+    },
+  })
+);
+
+// Body parser
+app.use(express.json());
+
+// =========================
+// Persistencia JSON (OFILINK Core)
+// =========================
 const DATA_FILE = process.env.DATA_FILE || "./data/data.json";
 const dataPath = path.resolve(DATA_FILE);
 
@@ -33,29 +58,10 @@ function writeData(data) {
   ensureDataFile();
   fs.writeFileSync(dataPath, JSON.stringify(data, null, 2), "utf-8");
 }
-import aiContaRouter from "./modules/aiconta/index.js";
 
-app.use("/api/aiconta", aiconta);
-
-app.use("/api/aiconta", aiContaRouter);
-
-// Middlewares
-app.use(
-  cors({
-    origin: function (origin, callback) {
-      if (!origin) return callback(null, true); // Postman / server-to-server
-      if (allowedOrigins.length === 0) return callback(null, true);
-      if (allowedOrigins.indexOf(origin) === -1) {
-        return callback(new Error("Origen no permitido por CORS: " + origin), false);
-      }
-      return callback(null, true);
-    },
-  })
-);
-app.use(express.json());
-// === AIConta (Fiscal Shield) Router v1 ===
-import express from "express";
-
+// =========================
+// AIConta (Fiscal Shield) Router v1
+// =========================
 const aiconta = express.Router();
 
 // health del módulo
@@ -63,7 +69,7 @@ aiconta.get("/health", (req, res) => {
   res.json({ ok: true, service: "aiconta", message: "AIConta API viva" });
 });
 
-// demo: empresa base (Contax Solutions...)
+// demo: empresa base
 aiconta.get("/companies", (req, res) => {
   res.json({
     ok: true,
@@ -80,10 +86,9 @@ aiconta.get("/companies", (req, res) => {
 });
 
 // Fiscal Shield v1: análisis compliance (placeholder)
-aiconta.post("/compliance/analyze", express.json(), async (req, res) => {
+aiconta.post("/compliance/analyze", async (req, res) => {
   const payload = req.body || {};
 
-  // v1: respondemos estructura (luego conectamos LLM + BD + evidencia)
   res.json({
     ok: true,
     bot: "FiscalShield",
@@ -111,11 +116,15 @@ aiconta.post("/compliance/analyze", express.json(), async (req, res) => {
   });
 });
 
-export default aiconta;
+// Montar módulo AIConta
+app.use("/api/aiconta", aiconta);
 
-
-// Routes
-app.get("/api/health", (req, res) => res.json({ ok: true, message: "OFILINK 2.0 API viva" }));
+// =========================
+// OFILINK Core Routes
+// =========================
+app.get("/api/health", (req, res) =>
+  res.json({ ok: true, message: "OFILINK 2.0 API viva" })
+);
 
 app.get("/api/clientes", (req, res) => {
   const data = readData();
@@ -173,16 +182,21 @@ app.post("/api/tickets", (req, res) => {
   res.status(201).json(nuevo);
 });
 
-// 404
+// =========================
+// 404 + Error handler
+// =========================
 app.use((req, res) => res.status(404).json({ ok: false, message: "Ruta no encontrada" }));
 
-// Error handler
 app.use((err, req, res, next) => {
   console.error("API Error:", err.message);
   res.status(500).json({ ok: false, message: "Error interno de servidor" });
 });
 
+// =========================
+// Start
+// =========================
 app.listen(PORT, () => {
   console.log("OFILINK 2.0 API escuchando en puerto", PORT);
   console.log("DATA_FILE:", dataPath);
+  console.log("CORS_ORIGINS:", allowedOrigins);
 });
