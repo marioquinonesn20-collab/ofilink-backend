@@ -35,6 +35,8 @@ function writeData(data) {
 }
 import aiContaRouter from "./modules/aiconta/index.js";
 
+app.use("/api/aiconta", aiconta);
+
 app.use("/api/aiconta", aiContaRouter);
 
 // Middlewares
