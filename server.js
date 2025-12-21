@@ -51,6 +51,66 @@ app.use(
   })
 );
 app.use(express.json());
+// === AIConta (Fiscal Shield) Router v1 ===
+import express from "express";
+
+const aiconta = express.Router();
+
+// health del módulo
+aiconta.get("/health", (req, res) => {
+  res.json({ ok: true, service: "aiconta", message: "AIConta API viva" });
+});
+
+// demo: empresa base (Contax Solutions...)
+aiconta.get("/companies", (req, res) => {
+  res.json({
+    ok: true,
+    items: [
+      {
+        id: "contax",
+        legalName: "CONTAX SOLUTIONS AND BUSINESS ADMINISTRATION SAS DE CV",
+        country: "MX",
+        defaultCurrency: "MXN",
+        active: true,
+      },
+    ],
+  });
+});
+
+// Fiscal Shield v1: análisis compliance (placeholder)
+aiconta.post("/compliance/analyze", express.json(), async (req, res) => {
+  const payload = req.body || {};
+
+  // v1: respondemos estructura (luego conectamos LLM + BD + evidencia)
+  res.json({
+    ok: true,
+    bot: "FiscalShield",
+    version: "v1",
+    inputEcho: payload,
+    result: {
+      overall: "yellow", // green | yellow | red
+      summary:
+        "V1 demo: estructura lista. Pendiente motor experto + EFOS/69-B + expediente materialidad.",
+      findings: [
+        {
+          code: "MATERIALIDAD_BASE",
+          severity: "medium",
+          title: "Expediente incompleto",
+          detail: "Faltan evidencias mínimas ligadas a contrato/OC/pedido.",
+          suggestedNext: [
+            "Subir contrato firmado",
+            "Adjuntar orden de compra/pedido",
+            "Evidencia de entrega/servicio (correo, fotos, bitácora)",
+          ],
+        },
+      ],
+      citations: [], // aquí luego van artículos cuando aplique
+    },
+  });
+});
+
+export default aiconta;
+
 
 // Routes
 app.get("/api/health", (req, res) => res.json({ ok: true, message: "OFILINK 2.0 API viva" }));
