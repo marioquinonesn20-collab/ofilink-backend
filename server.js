@@ -1,3 +1,6 @@
+// server.js (OFILINK Backend + AIConta Fiscal Shield v1)
+// CommonJS ONLY
+
 require("dotenv").config();
 
 const express = require("express");
@@ -8,10 +11,13 @@ const path = require("path");
 const app = express();
 const PORT = process.env.PORT || 4000;
 
-// =========================
-// CORS
-// =========================
+/* =========================
+   1) CORS (PRIMERO SIEMPRE)
+========================= */
+// En Railway configura:
+// CORS_ORIGINS="https://xxx.vercel.app,https://yyy.vercel.app,http://localhost:5173"
 const corsOriginsEnv = process.env.CORS_ORIGINS || "http://localhost:5173";
+
 const allowedOrigins = corsOriginsEnv
   .split(",")
   .map((o) => o.trim())
@@ -20,28 +26,40 @@ const allowedOrigins = corsOriginsEnv
 app.use(
   cors({
     origin: function (origin, callback) {
-      if (!origin) return callback(null, true); // Postman / server-to-server
+      // Permite requests sin origin (Postman, server-to-server)
+      if (!origin) return callback(null, true);
+
+      // Si no hay lista, permite todo (modo dev)
       if (allowedOrigins.length === 0) return callback(null, true);
-      if (allowedOrigins.indexOf(origin) === -1) {
-        return callback(new Error("Origen no permitido por CORS: " + origin), false);
+
+      // Valida contra whitelist
+      if (!allowedOrigins.includes(origin)) {
+        return callback(new Error("CORS bloqueado: " + origin), false);
       }
       return callback(null, true);
     },
+    methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+    allowedHeaders: ["Content-Type", "Authorization"],
+    credentials: false,
   })
 );
 
-// Body parser
-app.use(express.json());
+// Preflight global
+app.options("*", cors());
 
-// =========================
-// Persistencia JSON (OFILINK Core)
-// =========================
+// JSON body
+app.use(express.json({ limit: "10mb" }));
+
+/* =========================
+   2) Persistencia JSON
+========================= */
 const DATA_FILE = process.env.DATA_FILE || "./data/data.json";
 const dataPath = path.resolve(DATA_FILE);
 
 function ensureDataFile() {
   const dir = path.dirname(dataPath);
   if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+
   if (!fs.existsSync(dataPath)) {
     const seed = { nextClienteId: 1, nextTicketId: 1, clientes: [], tickets: [] };
     fs.writeFileSync(dataPath, JSON.stringify(seed, null, 2), "utf-8");
@@ -59,72 +77,12 @@ function writeData(data) {
   fs.writeFileSync(dataPath, JSON.stringify(data, null, 2), "utf-8");
 }
 
-// =========================
-// AIConta (Fiscal Shield) Router v1
-// =========================
-const aiconta = express.Router();
-
-// health del módulo
-aiconta.get("/health", (req, res) => {
-  res.json({ ok: true, service: "aiconta", message: "AIConta API viva" });
+/* =========================
+   3) Routes - Core OFILINK
+========================= */
+app.get("/api/health", (req, res) => {
+  res.json({ ok: true, message: "OFILINK 2.0 API viva" });
 });
-
-// demo: empresa base
-aiconta.get("/companies", (req, res) => {
-  res.json({
-    ok: true,
-    items: [
-      {
-        id: "contax",
-        legalName: "CONTAX SOLUTIONS AND BUSINESS ADMINISTRATION SAS DE CV",
-        country: "MX",
-        defaultCurrency: "MXN",
-        active: true,
-      },
-    ],
-  });
-});
-
-// Fiscal Shield v1: análisis compliance (placeholder)
-aiconta.post("/compliance/analyze", async (req, res) => {
-  const payload = req.body || {};
-
-  res.json({
-    ok: true,
-    bot: "FiscalShield",
-    version: "v1",
-    inputEcho: payload,
-    result: {
-      overall: "yellow", // green | yellow | red
-      summary:
-        "V1 demo: estructura lista. Pendiente motor experto + EFOS/69-B + expediente materialidad.",
-      findings: [
-        {
-          code: "MATERIALIDAD_BASE",
-          severity: "medium",
-          title: "Expediente incompleto",
-          detail: "Faltan evidencias mínimas ligadas a contrato/OC/pedido.",
-          suggestedNext: [
-            "Subir contrato firmado",
-            "Adjuntar orden de compra/pedido",
-            "Evidencia de entrega/servicio (correo, fotos, bitácora)",
-          ],
-        },
-      ],
-      citations: [], // aquí luego van artículos cuando aplique
-    },
-  });
-});
-
-// Montar módulo AIConta
-app.use("/api/aiconta", aiconta);
-
-// =========================
-// OFILINK Core Routes
-// =========================
-app.get("/api/health", (req, res) =>
-  res.json({ ok: true, message: "OFILINK 2.0 API viva" })
-);
 
 app.get("/api/clientes", (req, res) => {
   const data = readData();
@@ -182,21 +140,79 @@ app.post("/api/tickets", (req, res) => {
   res.status(201).json(nuevo);
 });
 
-// =========================
-// 404 + Error handler
-// =========================
+/* =========================
+   4) AIConta - Fiscal Shield v1
+========================= */
+const aiconta = express.Router();
+
+aiconta.get("/health", (req, res) => {
+  res.json({ ok: true, service: "aiconta", message: "AIConta API viva" });
+});
+
+aiconta.get("/companies", (req, res) => {
+  res.json({
+    ok: true,
+    items: [
+      {
+        id: "contax",
+        legalName: "CONTAX SOLUTIONS AND BUSINESS ADMINISTRATION SAS DE CV",
+        country: "MX",
+        defaultCurrency: "MXN",
+        active: true,
+      },
+    ],
+  });
+});
+
+aiconta.post("/compliance/analyze", (req, res) => {
+  const payload = req.body || {};
+
+  res.json({
+    ok: true,
+    bot: "FiscalShield",
+    version: "v1",
+    inputEcho: payload,
+    result: {
+      overall: "yellow", // green | yellow | red
+      summary:
+        "V1 demo: estructura lista. Pendiente motor experto + EFOS/69-B + expediente materialidad.",
+      findings: [
+        {
+          code: "MATERIALIDAD_BASE",
+          severity: "medium",
+          title: "Expediente incompleto",
+          detail: "Faltan evidencias mínimas ligadas a contrato/OC/pedido.",
+          suggestedNext: [
+            "Subir contrato firmado",
+            "Adjuntar orden de compra/pedido",
+            "Evidencia de entrega/servicio (correo, fotos, bitácora)",
+          ],
+        },
+      ],
+      citations: [],
+    },
+  });
+});
+
+app.use("/api/aiconta", aiconta);
+
+/* =========================
+   5) 404 + Error handler
+========================= */
 app.use((req, res) => res.status(404).json({ ok: false, message: "Ruta no encontrada" }));
 
 app.use((err, req, res, next) => {
   console.error("API Error:", err.message);
-  res.status(500).json({ ok: false, message: "Error interno de servidor" });
+  res.status(500).json({ ok: false, message: err.message || "Error interno de servidor" });
 });
 
-// =========================
-// Start
-// =========================
+/* =========================
+   6) Start
+========================= */
 app.listen(PORT, () => {
   console.log("OFILINK 2.0 API escuchando en puerto", PORT);
   console.log("DATA_FILE:", dataPath);
   console.log("CORS_ORIGINS:", allowedOrigins);
 });
+
+module.exports = app;
